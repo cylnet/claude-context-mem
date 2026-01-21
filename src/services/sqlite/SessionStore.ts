@@ -341,7 +341,7 @@ export class SessionStore {
         memory_session_id TEXT NOT NULL,
         project TEXT NOT NULL,
         text TEXT,
-        type TEXT NOT NULL CHECK(type IN ('decision', 'bugfix', 'feature', 'refactor', 'discovery', 'change')),
+        type TEXT NOT NULL CHECK(type IN ('decision', 'bugfix', 'feature', 'refactor', 'discovery', 'change', 'error')),
         title TEXT,
         subtitle TEXT,
         facts TEXT,

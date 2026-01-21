@@ -45,13 +45,16 @@ const ERROR_TYPE_PATTERNS: [RegExp, string][] = [
 
 export function detectBashError(input: {
   tool_name: string;
-  tool_response: string;
+  tool_response: unknown;
 }): ErrorDetectionResult {
   if (input.tool_name !== 'Bash') {
     return { isError: false };
   }
 
-  const response = input.tool_response;
+  // Ensure response is a string
+  const response = typeof input.tool_response === 'string'
+    ? input.tool_response
+    : JSON.stringify(input.tool_response ?? '');
 
   // Check for non-zero exit code
   for (const pattern of EXIT_CODE_PATTERNS) {

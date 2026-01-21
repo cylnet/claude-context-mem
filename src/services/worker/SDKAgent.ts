@@ -84,10 +84,17 @@ export class SDKAgent {
       lastPromptNumber: session.lastPromptNumber
     });
 
+    // Context overflow prevention: limit resume to avoid "Prompt is too long" errors
+    // SDK's resume mechanism accumulates all historical context, which can exceed limits
+    // After MAX_RESUME_PROMPTS, start fresh to prevent context overflow
+    const MAX_RESUME_PROMPTS = 3;
+    const shouldResume = hasRealMemorySessionId && session.lastPromptNumber > 1 && session.lastPromptNumber <= MAX_RESUME_PROMPTS;
+
     // Debug-level alignment logs for detailed tracing
     if (session.lastPromptNumber > 1) {
-      const willResume = hasRealMemorySessionId;
-      logger.debug('SDK', `[ALIGNMENT] Resume Decision | contentSessionId=${session.contentSessionId} | memorySessionId=${session.memorySessionId} | prompt#=${session.lastPromptNumber} | hasRealMemorySessionId=${hasRealMemorySessionId} | willResume=${willResume} | resumeWith=${willResume ? session.memorySessionId : 'NONE'}`);
+      const willResume = shouldResume;
+      const reason = !hasRealMemorySessionId ? 'no_memory_id' : session.lastPromptNumber > MAX_RESUME_PROMPTS ? 'context_overflow_prevention' : 'normal';
+      logger.debug('SDK', `[ALIGNMENT] Resume Decision | contentSessionId=${session.contentSessionId} | memorySessionId=${session.memorySessionId} | prompt#=${session.lastPromptNumber} | hasRealMemorySessionId=${hasRealMemorySessionId} | willResume=${willResume} | reason=${reason} | resumeWith=${willResume ? session.memorySessionId : 'NONE'}`);
     } else {
       // INIT prompt - never resume even if memorySessionId exists (stale from previous session)
       const hasStaleMemoryId = hasRealMemorySessionId;
@@ -98,15 +105,14 @@ export class SDKAgent {
     }
 
     // Run Agent SDK query loop
-    // Only resume if we have a captured memory session ID
+    // Only resume if we have a captured memory session ID AND within context limits
     const queryResult = query({
       prompt: messageGenerator,
       options: {
         model: modelId,
-        // Only resume if BOTH: (1) we have a memorySessionId AND (2) this isn't the first prompt
-        // On worker restart, memorySessionId may exist from a previous SDK session but we
-        // need to start fresh since the SDK context was lost
-        ...(hasRealMemorySessionId && session.lastPromptNumber > 1 && { resume: session.memorySessionId }),
+        // Resume only if: (1) have memorySessionId, (2) not first prompt, (3) within context limits
+        // After MAX_RESUME_PROMPTS, start fresh to prevent "Prompt is too long" errors
+        ...(shouldResume && { resume: session.memorySessionId }),
         disallowedTools,
         abortController: session.abortController,
         pathToClaudeCodeExecutable: claudePath
