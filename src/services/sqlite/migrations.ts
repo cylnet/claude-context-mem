@@ -500,6 +500,76 @@ export const migration007: Migration = {
 
 
 /**
+ * Migration 008 - Add 'error' observation type
+ * Extends the type CHECK constraint to include 'error' for error learning system
+ */
+export const migration008: Migration = {
+  version: 8,
+  name: 'add_error_observation_type',
+  up: (db: Database) => {
+    // SQLite doesn't support ALTER CHECK constraint, must rebuild table
+    db.run(`
+      CREATE TABLE observations_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        memory_session_id TEXT NOT NULL,
+        project TEXT NOT NULL,
+        text TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('decision', 'bugfix', 'feature', 'refactor', 'discovery', 'change', 'error')),
+        created_at TEXT NOT NULL,
+        created_at_epoch INTEGER NOT NULL,
+        title TEXT,
+        subtitle TEXT,
+        facts TEXT,
+        narrative TEXT,
+        concepts TEXT,
+        files_read TEXT,
+        files_modified TEXT,
+        prompt_number INTEGER,
+        discovery_tokens INTEGER DEFAULT 0,
+        FOREIGN KEY (memory_session_id) REFERENCES sdk_sessions(memory_session_id) ON DELETE CASCADE
+      );
+      INSERT INTO observations_new SELECT * FROM observations;
+      DROP TABLE observations;
+      ALTER TABLE observations_new RENAME TO observations;
+    `);
+
+    // Recreate indexes
+    db.run(`
+      CREATE INDEX IF NOT EXISTS idx_observations_sdk_session ON observations(memory_session_id);
+      CREATE INDEX IF NOT EXISTS idx_observations_project ON observations(project);
+      CREATE INDEX IF NOT EXISTS idx_observations_type ON observations(type);
+      CREATE INDEX IF NOT EXISTS idx_observations_created ON observations(created_at_epoch DESC);
+    `);
+
+    // Recreate FTS triggers (dropped when table was dropped)
+    db.run(`
+      CREATE TRIGGER IF NOT EXISTS observations_ai AFTER INSERT ON observations BEGIN
+        INSERT INTO observations_fts(rowid, title, subtitle, narrative, text, facts, concepts)
+        VALUES (new.id, new.title, new.subtitle, new.narrative, new.text, new.facts, new.concepts);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS observations_ad AFTER DELETE ON observations BEGIN
+        INSERT INTO observations_fts(observations_fts, rowid, title, subtitle, narrative, text, facts, concepts)
+        VALUES('delete', old.id, old.title, old.subtitle, old.narrative, old.text, old.facts, old.concepts);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS observations_au AFTER UPDATE ON observations BEGIN
+        INSERT INTO observations_fts(observations_fts, rowid, title, subtitle, narrative, text, facts, concepts)
+        VALUES('delete', old.id, old.title, old.subtitle, old.narrative, old.text, old.facts, old.concepts);
+        INSERT INTO observations_fts(rowid, title, subtitle, narrative, text, facts, concepts)
+        VALUES (new.id, new.title, new.subtitle, new.narrative, new.text, new.facts, new.concepts);
+      END;
+    `);
+
+    console.log('✅ Added error observation type to CHECK constraint');
+  },
+
+  down: (_db: Database) => {
+    console.log('⚠️  Warning: Rollback requires manual table rebuild to remove error type');
+  }
+};
+
+/**
  * All migrations in order
  */
 export const migrations: Migration[] = [
@@ -509,5 +579,6 @@ export const migrations: Migration[] = [
   migration004,
   migration005,
   migration006,
-  migration007
+  migration007,
+  migration008
 ];

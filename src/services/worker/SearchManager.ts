@@ -1846,4 +1846,35 @@ export class SearchManager {
       };
     }
   }
+
+  /**
+   * Search for similar errors using Chroma vector search
+   * Used by /api/errors/similar endpoint
+   */
+  async searchSimilarErrors(args: {
+    error_message: string;
+    limit?: number;
+    threshold?: number;
+  }): Promise<{ errors: Array<{ id: number; distance: number; metadata: any }> }> {
+    const { error_message, limit = 3, threshold = 0.7 } = args;
+
+    if (!this.chromaSync) {
+      return { errors: [] };
+    }
+
+    const chromaResults = await this.queryChroma(error_message, limit, { type: 'error' });
+
+    // Filter by distance threshold (lower distance = more similar)
+    // Convert threshold (0-1 similarity) to distance (typically 0-2 for cosine)
+    const maxDistance = 2 * (1 - threshold);
+    const filtered = chromaResults.ids
+      .map((id, i) => ({
+        id,
+        distance: chromaResults.distances[i],
+        metadata: chromaResults.metadatas[i]
+      }))
+      .filter(r => r.distance <= maxDistance);
+
+    return { errors: filtered };
+  }
 }

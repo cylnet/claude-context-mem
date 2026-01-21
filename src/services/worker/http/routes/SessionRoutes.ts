@@ -231,6 +231,7 @@ export class SessionRoutes extends BaseRouteHandler {
     app.post('/api/sessions/init', this.handleSessionInitByClaudeId.bind(this));
     app.post('/api/sessions/observations', this.handleObservationsByClaudeId.bind(this));
     app.post('/api/sessions/summarize', this.handleSummarizeByClaudeId.bind(this));
+    app.post('/api/sessions/errors', this.handleErrorsByClaudeId.bind(this));
   }
 
   /**
@@ -615,5 +616,44 @@ export class SessionRoutes extends BaseRouteHandler {
       promptNumber,
       skipped: false
     });
+  });
+
+  /**
+   * Store error for learning system
+   * POST /api/sessions/errors
+   */
+  private handleErrorsByClaudeId = this.wrapHandler((req: Request, res: Response): void => {
+    const { contentSessionId, error_message, error_type, keywords, file_path, command, cwd } = req.body;
+
+    if (!contentSessionId) {
+      return this.badRequest(res, 'Missing contentSessionId');
+    }
+
+    const store = this.dbManager.getSessionStore();
+    const sessionDbId = store.createSDKSession(contentSessionId, cwd || '', '');
+
+    const session = store.getSessionById(sessionDbId);
+    if (!session) {
+      return this.badRequest(res, 'Session not found');
+    }
+
+    // Use contentSessionId as fallback if memorySessionId not yet captured
+    const memorySessionId = session.memory_session_id || contentSessionId;
+
+    store.storeObservation(
+      memorySessionId,
+      session.project,
+      {
+        type: 'error',
+        title: `${error_type} Error`,
+        subtitle: command || null,
+        facts: keywords || [],
+        narrative: error_message || null,
+        concepts: [],
+        files_read: [],
+        files_modified: file_path ? [file_path] : []
+      }
+    );
+    res.json({ success: true });
   });
 }

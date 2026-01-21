@@ -42,6 +42,9 @@ export class SearchRoutes extends BaseRouteHandler {
     // Timeline and help endpoints
     app.get('/api/timeline/by-query', this.handleGetTimelineByQuery.bind(this));
     app.get('/api/search/help', this.handleSearchHelp.bind(this));
+
+    // Error search endpoint
+    app.get('/api/errors/similar', this.handleSimilarErrors.bind(this));
   }
 
   /**
@@ -322,6 +325,16 @@ export class SearchRoutes extends BaseRouteHandler {
           }
         },
         {
+          path: '/api/errors/similar',
+          method: 'GET',
+          description: 'Find similar historical errors using semantic search',
+          parameters: {
+            error_message: 'Error message to search for (required)',
+            limit: 'Number of results (default: 3)',
+            threshold: 'Similarity threshold 0-1 (default: 0.7)'
+          }
+        },
+        {
           path: '/api/context/recent',
           method: 'GET',
           description: 'Get recent session context including summaries and observations',
@@ -362,9 +375,34 @@ export class SearchRoutes extends BaseRouteHandler {
       examples: [
         'curl "http://localhost:37777/api/search/observations?query=authentication&limit=5"',
         'curl "http://localhost:37777/api/search/by-type?type=bugfix&limit=10"',
+        'curl "http://localhost:37777/api/errors/similar?error_message=TypeError%3A%20undefined&limit=3"',
         'curl "http://localhost:37777/api/context/recent?project=claude-mem&limit=3"',
         'curl "http://localhost:37777/api/context/timeline?anchor=123&depth_before=5&depth_after=5"'
       ]
     });
+  });
+
+  /**
+   * Search for similar historical errors
+   * GET /api/errors/similar?error_message=...&limit=3&threshold=0.7
+   */
+  private handleSimilarErrors = this.wrapHandler(async (req: Request, res: Response): Promise<void> => {
+    const { error_message, limit = '3', threshold = '0.7' } = req.query;
+
+    if (!error_message) {
+      this.badRequest(res, 'error_message parameter is required');
+      return;
+    }
+
+    const parsedLimit = parseInt(limit as string, 10);
+    const parsedThreshold = parseFloat(threshold as string);
+
+    const result = await this.searchManager.searchSimilarErrors({
+      error_message: error_message as string,
+      limit: isNaN(parsedLimit) ? 3 : parsedLimit,
+      threshold: isNaN(parsedThreshold) ? 0.7 : Math.max(0, Math.min(1, parsedThreshold))
+    });
+
+    res.json(result);
   });
 }
