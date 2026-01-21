@@ -58,7 +58,7 @@
 Start a new Claude Code session in the terminal and enter the following commands:
 
 ```
-> /plugin marketplace add [thedotmack/claude-mem](https://github.com/cylnet/claude-context-mem.git)
+> /plugin marketplace add https://github.com/cylnet/claude-context-mem.git
 
 > /plugin install claude-mem
 ```
